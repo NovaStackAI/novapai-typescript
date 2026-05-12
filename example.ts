@@ -1,6 +1,6 @@
 // NovaPAI TypeScript SDK Example
 // Install: npm install openai
-// Docs: https://api.novapai.ai
+// Docs: https://novapai.ai
 
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -56,4 +56,68 @@ async function multiTurnChat(): Promise<void> {
   console.log(await chat("Multiply that by 10"));
 }
 
-basicChat();
+// ── Function Calling ────────────────────────────────────────
+async function functionCalling(): Promise<void> {
+  const tools = [{
+    type: "function" as const,
+    function: {
+      name: "get_weather",
+      description: "Get current weather for a city",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          city: { type: "string", description: "City name" }
+        },
+        required: ["city"]
+      }
+    }
+  }];
+
+  const response = await client.chat.completions.create({
+    model: "deepseek-v4-pro",
+    messages: [{ role: "user", content: "What's the weather in Tokyo?" }],
+    tools,
+  });
+
+  const toolCall = response.choices[0].message.tool_calls![0];
+  console.log(`Function: ${toolCall.function.name}`);
+  console.log(`Args: ${toolCall.function.arguments}`);
+
+  const functionResult = JSON.stringify({ city: "Tokyo", temperature: 22, condition: "sunny" });
+  const final = await client.chat.completions.create({
+    model: "deepseek-v4-pro",
+    messages: [
+      { role: "user", content: "What's the weather in Tokyo?" },
+      response.choices[0].message,
+      { role: "tool", tool_call_id: toolCall.id, content: functionResult }
+    ]
+  });
+  console.log(final.choices[0].message.content);
+}
+
+// ── JSON Mode (Structured Output) ───────────────────────────
+async function jsonMode(): Promise<void> {
+  const response = await client.chat.completions.create({
+    model: "deepseek-v4-pro",
+    messages: [
+      { role: "system", content: "Extract company info as JSON." },
+      { role: "user", content: "Apple Inc. is based in Cupertino, founded in 1976." }
+    ],
+    response_format: { type: "json_object" }
+  });
+  const data = JSON.parse(response.choices[0].message.content!);
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// ── List Available Models ───────────────────────────────────
+async function listModels(): Promise<void> {
+  const models = await client.models.list();
+  models.data.forEach((model) => console.log(model.id));
+}
+
+await basicChat();
+await streamChat();
+await multiTurnChat();
+await functionCalling();
+await jsonMode();
+await listModels();
